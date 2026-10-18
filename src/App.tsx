@@ -4,7 +4,9 @@ import { DEFAULT_COLOR, DEFAULT_WIDTH, STORAGE_KEYS } from './engine/config';
 import { Landing } from './components/Landing';
 import { TopBar } from './components/TopBar';
 import { Toolbar } from './components/Toolbar';
-import { Guide, LoadingCard, Notice, SettingsPanel, StatusPill, Toast } from './components/Panels';
+import { Guide, LoadBar, Notice, SettingsPanel, StatusPill, Toast } from './components/Panels';
+import { getLoadState, prefetchVisionAssets, restartVisionAssets, subscribeLoadState, type LoadState } from './utils/assetLoader';
+import { assetBase } from './engine/handTracker';
 import { ExportDialog } from './components/ExportDialog';
 import { useStudio } from './hooks/useStudio';
 import { useCameraSession } from './hooks/useCameraSession';
@@ -59,7 +61,61 @@ export default function App() {
     { stage: stageRef, video: videoRef, done: doneRef, live: liveRef, overlay: overlayRef },
     active,
   );
-  const cam = useCameraSession(videoRef, studioRef);
+  // 摄像头画面一出来就显示新手指引（模型在后台下载，不用干等）
+  const onPreview = useCallback(() => {
+    if (!readFlag(STORAGE_KEYS.guide)) setGuideOpen(true);
+  }, []);
+  const cam = useCameraSession(videoRef, studioRef, onPreview);
+
+  // ---------- 模型下载进度（节流后才进 React state） ----------
+  const [load, setLoad] = useState<LoadState>(getLoadState());
+  const [slow, setSlow] = useState(false);
+  const [slowEpoch, setSlowEpoch] = useState(0);
+  useEffect(() => {
+    let last = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pending: LoadState | null = null;
+    const unsub = subscribeLoadState((st) => {
+      pending = st;
+      const now = Date.now();
+      if (st.phase !== 'downloading' || now - last > 250) {
+        last = now;
+        setLoad(st);
+        pending = null;
+      } else if (!timer) {
+        timer = setTimeout(() => {
+          timer = null;
+          last = Date.now();
+          if (pending) setLoad(pending);
+        }, 250);
+      }
+    });
+    return () => {
+      unsub();
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+  useEffect(() => {
+    if (cam.phase !== 'loading-model') {
+      setSlow(false);
+      return;
+    }
+    const t = setTimeout(() => setSlow(true), 20000);
+    return () => clearTimeout(t);
+  }, [cam.phase, slowEpoch]);
+  const retryDownload = useCallback(() => {
+    setSlow(false);
+    setSlowEpoch((n) => n + 1);
+    restartVisionAssets(assetBase()).catch(() => {});
+  }, []);
+
+  // 首屏空闲时预取模型（不申请摄像头权限）
+  useEffect(() => {
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
+    const go = () => prefetchVisionAssets(assetBase());
+    const t = setTimeout(() => (w.requestIdleCallback ? w.requestIdleCallback(go, { timeout: 2000 }) : go()), 600);
+    return () => clearTimeout(t);
+  }, []);
   const cameraOn = cam.phase === 'on';
   const cameraBusy = cam.phase === 'starting' || cam.phase === 'loading-model';
 
@@ -135,7 +191,6 @@ export default function App() {
     if (ok) {
       setMirror(true);
       setMode('camera');
-      if (!readFlag(STORAGE_KEYS.guide)) setGuideOpen(true);
     }
   }, [cam]);
 
@@ -247,7 +302,7 @@ export default function App() {
   else if (cam.phase === 'loading-model') shownStatus = 'model-loading';
   else if (!cameraOn) shownStatus = 'idle';
 
-  const showVideo = mode === 'camera' && cameraOn;
+  const showVideo = mode === 'camera' && (cameraOn || cam.phase === 'loading-model');
   const stageBg = showVideo || (mode === 'camera' && cameraBusy) ? '#000' : BG_COLOR[boardBg];
   const touchOnly = !cameraOn && !cameraBusy;
   const emptyHint = touchOnly ? '用手指或鼠标画一颗星星 ✨' : '试着在空中画一颗星星 ✨';
@@ -286,8 +341,11 @@ export default function App() {
         onHelp={() => setGuideOpen(true)}
         onSettings={() => setSettingsOpen((v) => !v)}
       />
-      <StatusPill status={shownStatus} />
-      {cam.phase === 'loading-model' && <LoadingCard text={cam.loadingText} />}
+      {cam.phase === 'loading-model' ? (
+        <LoadBar stage={cam.stage} loaded={load.loaded} total={load.total} slow={slow} onRetry={retryDownload} />
+      ) : (
+        <StatusPill status={shownStatus} />
+      )}
 
       {settingsOpen && (
         <SettingsPanel

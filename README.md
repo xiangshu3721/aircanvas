@@ -5,7 +5,8 @@
 - 在线体验：https://xiangshu3721.github.io/aircanvas/
 - 纯前端：无登录、无后端、无数据库、无密钥。摄像头画面只在你自己的设备上处理，**不上传任何数据**。
 - 作品自动保存在当前浏览器本地（localStorage），刷新或下次打开自动恢复。
-- 国内可用：手势模型（`hand_landmarker.task`）和识别引擎（wasm）都放在本站，运行时不访问任何海外 CDN，不用 Google Fonts。
+- 国内可用：手势模型（`hand_landmarker.task`，float16 版 7.5MB）和识别引擎（wasm）都放在本站，不访问 Google 的任何服务，不用 Google Fonts。
+- 打开即可用：模型在后台下载，顶部小条显示真实进度，期间可以直接用手指/鼠标画；下载一次后存进浏览器本地缓存，**第二次打开不再下载**。
 
 ## 怎么玩
 
@@ -107,6 +108,16 @@ npm run deploy:gh   # 构建并把 dist/ 发布到 gh-pages 分支
    - 要部署 `dist/` 里的全部文件，包括 `models/hand_landmarker.task`（约 7.5MB）和 `wasm/`（约 21MB，浏览器实际只下载其中一套约 11MB）。
    - `.wasm` 文件需要以 `application/wasm` 类型返回（CloudBase 默认支持）；如果自定义了 CDN 规则，记得别把 `.task` / `.wasm` 拦掉。
    - 如需绑定自己的域名，在控制台「静态网站托管 → 设置」里添加并配置 HTTPS 证书（中国大陆域名需备案）。
+
+## 模型加载与缓存（为什么第二次几乎秒开）
+
+- **只下载需要的那一套**：按浏览器能力二选一（simd / nosimd），实际传输约 9.3MB（gzip 后），之后存入 Cache Storage（缓存名带 MediaPipe 版本 + 模型哈希，升级时自动清理旧版本）。第二次打开直接从本地读取，不走网络、不受 GitHub Pages `max-age=600` 影响。
+- **首屏预取**：还没点「开始创作」时就在空闲时间开始下载（不会申请摄像头权限；省流量模式下不预取）。
+- **多源下载**：本站优先。本站 4 秒后估算还要 8 秒以上时，并发启用 jsDelivr 备用源（文件来自本仓库的 git tag `mp-<mediapipe 版本>`，不依赖 Google），竞速 3 秒后只保留最快的（速度差不多时保留本站）；某个源失败/卡住会自动换源。每个文件都校验大小和 SHA-256（清单见 `src/engine/assetManifest.json`，构建时自动生成）。
+- **不挡使用**：加载时顶部小条显示百分比；超过 20 秒提示「网络较慢，可以先用手指画」，并可点「重试」（立即启用备用源）。
+- **GPU 超时回退**：iPhone / iPad 直接用 CPU（MediaPipe 在 iOS WebGL 上历来不稳定）；其他设备 GPU 初始化超过 8 秒或报错就改用 CPU，并记住，下次不再等。
+
+> 升级 `@mediapipe/tasks-vision` 版本后，需要在发布 gh-pages 后给 gh-pages 打一个新 tag：`git tag mp-<新版本> origin/gh-pages && git push origin mp-<新版本>`，备用源才能找到新文件（本站源不受影响）。
 
 ## 浏览器支持
 

@@ -172,14 +172,41 @@ export function Notice({ title, desc, onClose, onRetry }: { title: string; desc:
   );
 }
 
-export function LoadingCard({ text }: { text: string }) {
+export interface LoadBarProps {
+  stage: 'download' | 'init' | 'ready' | null;
+  loaded: number;
+  total: number;
+  slow: boolean;
+  onRetry(): void;
+}
+
+/** 顶部小状态条：显示真实下载进度，不挡画布，加载期间可以直接用手指画 */
+export function LoadBar({ stage, loaded, total, slow, onRetry }: LoadBarProps) {
+  const downloading = stage === 'download' && total > 0 && loaded < total;
+  const pct = total > 0 ? Math.min(100, Math.floor((loaded / total) * 100)) : 0;
+  const mb = (n: number) => (n / 1048576).toFixed(1);
   return (
-    <div className="loading-card glass" role="status" data-testid="loading">
-      <span className="spinner" />
-      <div>
-        <b>{text || '准备中…'}</b>
-        <p>第一次打开需要下载约 10MB 的识别模型，请稍等</p>
+    <div className="load-bar glass" role="status" aria-live="polite" data-testid="loading" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="load-row">
+        <span className="spinner small" />
+        <span className="load-text" data-testid="loading-text">
+          {downloading ? `正在下载手势模型 ${pct}%（${mb(loaded)}/${mb(total)}MB）` : stage === 'init' ? '正在启动手势识别…' : '正在准备手势识别…'}
+        </span>
       </div>
+      {downloading && (
+        <div className="load-track">
+          <i style={{ width: pct + '%' }} />
+        </div>
+      )}
+      {slow && downloading && (
+        <div className="load-slow" data-testid="loading-slow">
+          <span>网络较慢，可以先用手指画，下好后会自动开启手势</span>
+          <button onClick={onRetry} data-testid="loading-retry">
+            重试
+          </button>
+        </div>
+      )}
+      {!slow && <p className="load-hint">现在就可以用手指 / 鼠标画画</p>}
     </div>
   );
 }

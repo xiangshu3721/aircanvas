@@ -776,6 +776,78 @@ input:focus-visible {
   color: var(--muted);
 }
 
+.load-bar {
+  position: absolute;
+  top: calc(76px + var(--sat));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  width: min(380px, calc(100vw - 24px));
+  border-radius: 16px;
+  padding: 9px 14px 10px;
+  font-size: 13px;
+  box-shadow: none;
+}
+.load-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.load-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.load-track {
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  margin-top: 7px;
+  overflow: hidden;
+}
+.load-track i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #00e5d4, #39a7ff, #b277ff);
+  transition: width 0.3s;
+}
+.load-hint {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.load-slow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: #ffd93d;
+}
+.load-slow span {
+  flex: 1;
+  line-height: 1.4;
+}
+.load-slow button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text);
+  font-size: 13px;
+  flex: none;
+}
+.spinner.small {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+@media (max-width: 760px) {
+  .load-bar {
+    top: calc(68px + var(--sat));
+  }
+}
 .loading-card {
   position: absolute;
   left: 50%;

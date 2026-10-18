@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { CameraErrorKind } from '../types';
 import { classifyCameraError, openCamera, stopStream, type Facing } from '../utils/camera';
-import { HandTracker } from '../engine/handTracker';
+import { HandTracker, type TrackerStage } from '../engine/handTracker';
 import type { Studio } from '../engine/studio';
 
 export type CamPhase = 'off' | 'starting' | 'loading-model' | 'on';
@@ -10,11 +10,11 @@ export type CamPhase = 'off' | 'starting' | 'loading-model' | 'on';
  * 摄像头 + 手势模型的生命周期：
  * 申请摄像头 → 预览 → 加载模型 → 开始识别；关闭/卸载时停止所有 track、关闭模型。
  */
-export function useCameraSession(videoRef: RefObject<HTMLVideoElement>, studioRef: RefObject<Studio | null>) {
+export function useCameraSession(videoRef: RefObject<HTMLVideoElement>, studioRef: RefObject<Studio | null>, onPreview?: () => void) {
   const [phase, setPhase] = useState<CamPhase>('off');
   const [facing, setFacing] = useState<Facing>('user');
   const [error, setError] = useState<CameraErrorKind | null>(null);
-  const [loadingText, setLoadingText] = useState('');
+  const [stage, setStage] = useState<TrackerStage | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const trackerRef = useRef<HandTracker | null>(null);
   const reqRef = useRef(0);
@@ -83,35 +83,43 @@ export function useCameraSession(videoRef: RefObject<HTMLVideoElement>, studioRe
       setFacing(f);
       if (!trackerRef.current) {
         setPhase('loading-model');
-        try {
-          setLoadingText('加载识别引擎…');
-          const t = await HandTracker.create((m) => setLoadingText(m));
-          if (id !== reqRef.current) {
-            t.close();
+        onPreview?.();
+        for (;;) {
+          try {
+            const t = await HandTracker.create(setStage);
+            if (id !== reqRef.current) {
+              t.close();
+              return false;
+            }
+            trackerRef.current = t;
+            break;
+          } catch (e) {
+            if (id !== reqRef.current) return false;
+            // 用户点了「重试」：旧下载被取消，接着等新的下载
+            if ((e as { name?: string })?.name === 'AbortError') continue;
+            console.warn('[AirCanvas] model error', e);
+            release();
+            setError('model');
+            setPhase('off');
+            setStage(null);
             return false;
           }
-          trackerRef.current = t;
-        } catch (e) {
-          console.warn('[AirCanvas] model error', e);
-          if (id !== reqRef.current) return false;
-          release();
-          setError('model');
-          setPhase('off');
-          return false;
         }
       }
+      setStage(null);
       studioRef.current?.setTracker(trackerRef.current);
       studioRef.current?.setTrackingEnabled(true);
       setPhase('on');
       return true;
     },
-    [facing, attach, release, studioRef],
+    [facing, attach, release, studioRef, onPreview],
   );
 
   const stop = useCallback(() => {
     reqRef.current++;
     release();
     setPhase('off');
+    setStage(null);
   }, [release]);
 
   /** 切换前后摄像头：只换视频流，模型保留 */
@@ -153,5 +161,5 @@ export function useCameraSession(videoRef: RefObject<HTMLVideoElement>, studioRe
     trackerRef.current?.close();
   }, []);
 
-  return { phase, facing, error, setError, loadingText, start, stop, switchFacing };
+  return { phase, facing, error, setError, stage, start, stop, switchFacing };
 }

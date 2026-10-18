@@ -16,6 +16,13 @@ PRE = '' if TAG == 'local' else TAG + '_'
 results = []
 
 
+MIRROR_WHITELIST = {'cdn.jsdelivr.net', 'fastly.jsdelivr.net', 'gcore.jsdelivr.net'}
+
+
+def external(reqs):
+    return [u for u in reqs if urlparse(u).netloc != urlparse(BASE).netloc and not u.startswith(('data:', 'blob:'))]
+
+
 def ok(name, cond, info=''):
     results.append({'name': name, 'pass': bool(cond), 'info': str(info)})
     print(('PASS' if cond else 'FAIL'), name, info, flush=True)
@@ -262,8 +269,10 @@ def ui_suite(b, name, vp, mobile):
     ok(V + '清空后刷新同步为空', info(pg)['strokes'] == 0)
     # 重新可撤销历史不会跨刷新，正常
     ok(V + '控制台无报错', len(errs) == 0, errs[:3])
-    ext = [u for u in reqs if urlparse(u).netloc not in (urlparse(BASE).netloc,) and not u.startswith(('data:', 'blob:'))]
-    ok(V + '无外部请求', len(ext) == 0, ext[:5])
+    ext = external(reqs)
+    ok(V + '外部请求只允许 jsDelivr 备用源白名单', all(urlparse(u).netloc in MIRROR_WHITELIST for u in ext), ext[:5])
+    ok(V + '本站优先：网络正常时没有用到备用源', len(ext) == 0, ext[:5])
+    ok(V + '首屏空闲预取了模型（本站）', any('models/hand_landmarker.task' in u for u in reqs))
     ctx.close()
 
 
@@ -325,16 +334,10 @@ def fake_camera_suite(p):
         pg.click('[data-testid=start]')
         t0 = time.time()
         try:
-            pg.wait_for_selector('[data-testid=loading]', timeout=8000)
-            ok(V + '出现模型加载提示', True)
+            pg.wait_for_selector('[data-testid=guide]', timeout=15000)
+            ok(V + '摄像头画面出来就弹新手指引（不用等模型）', True, f'{time.time() - t0:.1f}s')
         except Exception:
-            ok(V + '出现模型加载提示', False, '加载太快或未显示')
-        try:
-            pg.wait_for_selector('[data-testid=guide]', timeout=60000)
-            ok(V + '模型加载完成并弹出新手指引', True, f'{time.time() - t0:.1f}s')
-        except Exception:
-            ok(V + '模型加载完成并弹出新手指引', False, errs[:3])
-            pg.wait_for_timeout(450)
+            ok(V + '摄像头画面出来就弹新手指引（不用等模型）', False, errs[:3])
             pg.screenshot(path=f'{SHOTS}/{PRE}fail_fakecam_{name}.png')
             ctx.close()
             continue
@@ -398,19 +401,52 @@ def fake_camera_suite(p):
         live = pg.evaluate("(() => { const v = document.querySelector('video'); return !!(v && v.srcObject); })()")
         ok(V + '关闭摄像头后释放视频流', not live)
         ok(V + '关闭摄像头后内容仍在', info(pg)['strokes'] == n)
-        ext = [u for u in reqs if urlparse(u).netloc != urlparse(BASE).netloc and not u.startswith(('data:', 'blob:'))]
+        ext = external(reqs)
         ok(V + '模型与 wasm 从本站加载', any('models/hand_landmarker.task' in u for u in reqs) and any('/wasm/vision_wasm' in u for u in reqs))
-        ok(V + '无任何外部 CDN 请求', len(ext) == 0, ext[:5])
+        ok(V + '外部请求只允许白名单，且网络正常时为 0', len(ext) == 0, ext[:5])
+        # 二次打开：模型和 wasm 走本地缓存，不再请求网络
+        n_before = len(reqs)
+        pg2 = ctx.new_page()
+        reqs2 = []
+        pg2.on('request', lambda r: reqs2.append(r.url))
+        pg2.goto(BASE)
+        pg2.click('[data-testid=start]')
+        t2 = time.time()
+        pg2.wait_for_function('window.__aircanvas && window.__aircanvas.info().detections > 0', timeout=30000)
+        ok(V + '二次打开：模型/wasm 走本地缓存（0 次网络请求）', not any(('hand_landmarker' in u or 'vision_wasm' in u) for u in reqs2),
+           f'手势就绪 {time.time() - t2:.1f}s')
+        pg2.close()
         errs2 = [e for e in errs if 'gl_' not in e.lower() and 'webgl' not in e.lower()]
         ok(V + '控制台无报错', len(errs2) == 0, errs[:3])
         ctx.close()
+    # GPU 初始化卡住 → 8 秒后回退 CPU，期间可以画
+    ctx, pg, errs, _ = new_page(b, {'width': 1180, 'height': 820}, False, 'window.__aircanvasTest = { gpuHang: true };', perms=['camera'])
+    pg.goto(BASE)
+    pg.evaluate("localStorage.setItem('aircanvas.guideSeen.v1','1')")
+    pg.click('[data-testid=start]')
+    t0 = time.time()
+    pg.wait_for_selector('[data-testid=loading]', timeout=10000)
+    draw(pg, line(0.2, 0.6, 0.6, 0.62))
+    ok('GPU 卡住：加载期间可以用鼠标画', pg.evaluate('window.__aircanvas.info().strokes') == 1)
+    pg.wait_for_timeout(450)
+    pg.screenshot(path=f'{SHOTS}/{PRE}10_loading_bar_desktop.png')
+    try:
+        pg.wait_for_function('window.__aircanvas.info().detections > 0', timeout=40000)
+        i = pg.evaluate('window.__aircanvas.info()')
+        ok('GPU 初始化卡住 → 超时回退 CPU 并能识别', i['delegate'] == 'CPU', f"{time.time() - t0:.1f}s delegate={i['delegate']}")
+    except Exception as e:
+        ok('GPU 初始化卡住 → 超时回退 CPU 并能识别', False, str(e)[:120])
+    ok('GPU 失败后记住改用 CPU（下次不再等 8 秒）', pg.evaluate("localStorage.getItem('aircanvas.delegate.v1')") == 'CPU')
+    ctx.close()
+
     # 模型加载失败 → 提示 + 降级触屏
     ctx, pg, errs, _ = new_page(b, {'width': 390, 'height': 844}, True, None, perms=['camera'])
     pg.route('**/hand_landmarker.task', lambda r: r.fulfill(status=404, body='not found'))
+    ctx.route('**/*jsdelivr.net/**', lambda r: r.fulfill(status=404, body='not found'))
     pg.goto(BASE)
     pg.click('[data-testid=start]')
     try:
-        pg.wait_for_selector('[data-testid=notice]', timeout=30000)
+        pg.wait_for_selector('[data-testid=notice]', timeout=60000)
         t = pg.locator('[data-testid=notice]').inner_text()
         ok('模型加载失败 → 提示原因', '手势识别没能启动' in t, t.split('\n')[1] if '\n' in t else t)
     except Exception as e:
