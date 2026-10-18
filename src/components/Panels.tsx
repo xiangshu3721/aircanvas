@@ -178,7 +178,7 @@ export function LoadingCard({ text }: { text: string }) {
       <span className="spinner" />
       <div>
         <b>{text || '准备中…'}</b>
-        <p>第一次打开需要下载约 20MB，请稍等</p>
+        <p>第一次打开需要下载约 10MB 的识别模型，请稍等</p>
       </div>
     </div>
   );

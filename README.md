@@ -104,7 +104,7 @@ npm run deploy:gh   # 构建并把 dist/ 发布到 gh-pages 分支
    ```
 4. 打开控制台给出的默认域名（`https://your-env-id-xxxx.tcloudbaseapp.com/`）即可访问。默认域名就是 HTTPS，摄像头可以用。
 5. 注意事项：
-   - 要部署 `dist/` 里的全部文件，包括 `models/hand_landmarker.task`（约 7.5MB）和 `wasm/`（约 20MB）。
+   - 要部署 `dist/` 里的全部文件，包括 `models/hand_landmarker.task`（约 7.5MB）和 `wasm/`（约 21MB，浏览器实际只下载其中一套约 11MB）。
    - `.wasm` 文件需要以 `application/wasm` 类型返回（CloudBase 默认支持）；如果自定义了 CDN 规则，记得别把 `.task` / `.wasm` 拦掉。
    - 如需绑定自己的域名，在控制台「静态网站托管 → 设置」里添加并配置 HTTPS 证书（中国大陆域名需备案）。
 
