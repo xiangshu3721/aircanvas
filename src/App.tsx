@@ -272,7 +272,7 @@ export default function App() {
         <canvas ref={overlayRef} className="layer layer-overlay" data-testid="canvas" />
       </div>
 
-      {!hasDrawn && hist.count === 0 && !guideOpen && <div className="empty-hint">{emptyHint}</div>}
+      {!hasDrawn && hist.count === 0 && !guideOpen && !notice && !exportOpen && <div className="empty-hint">{emptyHint}</div>}
 
       <TopBar
         mode={mode}

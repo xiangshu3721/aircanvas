@@ -47,6 +47,27 @@ export class HandTracker {
       this.delegate = 'CPU';
     }
     this.recreate = () => make('CPU');
+    // 预热：第一次推理通常很慢（编译着色器），放在加载阶段做，避免开始画时卡一下
+    onProgress?.('准备识别…');
+    try {
+      const c = document.createElement('canvas');
+      c.width = 64;
+      c.height = 48;
+      c.getContext('2d')?.fillRect(0, 0, 64, 48);
+      this.lastTs = performance.now();
+      this.landmarker!.detectForVideo(c, this.lastTs);
+    } catch (e) {
+      if (this.delegate === 'GPU') {
+        console.warn('[AirCanvas] GPU 预热失败，改用 CPU', e);
+        try {
+          this.landmarker?.close();
+        } catch {
+          /* ignore */
+        }
+        this.landmarker = await make('CPU');
+        this.delegate = 'CPU';
+      }
+    }
   }
 
   private recreate: (() => Promise<HandLandmarker>) | null = null;

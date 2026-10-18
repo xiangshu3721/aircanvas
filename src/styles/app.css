@@ -1,6 +1,6 @@
 :root {
   --glass: rgba(18, 20, 30, 0.58);
-  --glass-strong: rgba(18, 20, 30, 0.82);
+  --glass-strong: rgba(20, 22, 32, 0.93);
   --line: rgba(255, 255, 255, 0.12);
   --text: #f4f6fb;
   --muted: rgba(244, 246, 251, 0.62);
@@ -335,6 +335,7 @@ input:focus-visible {
   gap: 2px;
 }
 .mode-seg button {
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -657,11 +658,11 @@ input:focus-visible {
   position: fixed;
   inset: 0;
   z-index: 30;
-  background: rgba(4, 6, 12, 0.5);
+  background: rgba(4, 6, 12, 0.62);
   display: grid;
   place-items: center;
   padding: calc(16px + var(--sat)) 16px calc(16px + var(--sab));
-  animation: fade 0.2s ease;
+  animation: fade 0.15s ease;
 }
 @keyframes fade {
   from {
@@ -847,6 +848,9 @@ input:focus-visible {
   .brand b {
     font-size: 14px;
   }
+  .top-actions {
+    gap: 0;
+  }
   .mode-seg {
     justify-self: center;
   }
@@ -908,7 +912,15 @@ input:focus-visible {
     bottom: calc(140px + var(--sab));
   }
 }
-@media (max-width: 360px) {
+@media (max-width: 480px) {
+  .brand b {
+    display: none;
+  }
+  .icon-btn {
+    width: 42px;
+  }
+}
+@media (max-width: 340px) {
   .mode-seg span {
     display: none;
   }

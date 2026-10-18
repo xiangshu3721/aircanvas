@@ -9,7 +9,10 @@
     "prebuild": "npm run copy-wasm",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy:gh": "bash scripts/deploy-gh-pages.sh",
+    "e2e": "python3 e2e/e2e.py http://127.0.0.1:4173/ local",
+    "stress": "python3 e2e/stress.py http://127.0.0.1:4173/ 180"
   },
   "license": "MIT",
   "type": "module",
